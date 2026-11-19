@@ -1,7 +1,8 @@
+from __future__ import annotations
 import numpy as np
 
 # =====================================================================
-# 1. HÀM CỬA SỔ HAMMING
+# 1. HÀM CỬA SỔ HAMMING (cắt âm thanh thành từng frame)
 # =====================================================================
 def my_hamming(N: int) -> np.ndarray:
     """
@@ -14,7 +15,7 @@ def my_hamming(N: int) -> np.ndarray:
 
 
 # =====================================================================
-# 2. THUẬT TOÁN FFT & IFFT (Cooley-Tukey Radix-2 - Tự code bằng NumPy)
+# 2. THUẬT TOÁN FFT & IFFT (Cooley-Tukey Radix-2)
 # =====================================================================
 def my_fft(x: np.ndarray) -> np.ndarray:
     """
@@ -22,7 +23,7 @@ def my_fft(x: np.ndarray) -> np.ndarray:
     Hỗ trợ cả mảng 1D (chiều dài N) hoặc ma trận 2D (num_frames, N).
     Yêu cầu: N phải là lũy thừa của 2 (ví dụ: 256, 512, 1024).
     """
-    x = np.asarray(x, dtype=np.complex128)
+    x = np.asarray(x, dtype=np.complex128) #ép mảng thành số phức
     N = x.shape[-1]
 
     # Kiểm tra N có phải lũy thừa của 2 không
@@ -48,14 +49,14 @@ def my_fft(x: np.ndarray) -> np.ndarray:
     return np.concatenate([first_half, second_half], axis=-1)
 
 
-def my_ifft(X: np.ndarray) -> np.ndarray:
+def my_ifft(X: np.ndarray) -> np.ndarray: #vòng lặp ngược lại IFFT
     """
     Biến đổi Fourier nhanh ngược (Inverse FFT) dựa trên tính chất đối ngẫu:
     IFFT(X) = (1 / N) * conj(FFT(conj(X)))
     """
     X = np.asarray(X, dtype=np.complex128)
     N = X.shape[-1]
-    return np.conj(my_fft(np.conj(X))) / N
+    return np.conj(my_fft(np.conj(X))) / N # Liên hệ giữa FFT và IFFT: IFFT(X) = (1/N) * conj(FFT(conj(X)))
 
 
 # =====================================================================
@@ -76,14 +77,14 @@ def my_stft(audio: np.ndarray, n_fft: int = 512, hop_length: int = 256) -> np.nd
     num_frames = 1 + (len(audio_padded) - n_fft) // hop_length
 
     # Chia khung (Framing) và nhân cửa sổ Hamming
-    window = my_hamming(n_fft)
-    frames = np.zeros((num_frames, n_fft), dtype=np.float32)
+    window = my_hamming(n_fft) #làm mượt 2 đầu khung
+    frames = np.zeros((num_frames, n_fft), dtype=np.float32) #Khởi tạo mảng khung
 
-    for m in range(num_frames):
+    for m in range(num_frames): # vòng lặp để chia khung
         start = m * hop_length
         frames[m, :] = audio_padded[start : start + n_fft] * window
 
-    # Gọi hàm my_fft tự code cho toàn bộ các khung
+    # Gọi hàm my_fft cho toàn bộ các khung
     full_stft = my_fft(frames)
 
     # Vì tín hiệu âm thanh là số thực, phổ FFT đối xứng qua tần số Nyquist (n_fft // 2).
@@ -99,23 +100,23 @@ def my_istft(stft_matrix: np.ndarray, orig_len: int, n_fft: int = 512, hop_lengt
     """
     Khôi phục lại tín hiệu âm thanh 1D từ ma trận STFT bằng phương pháp Overlap-Add (Cộng chồng lấp).
     """
-    num_frames = stft_matrix.shape[0]
+    num_frames = stft_matrix.shape[0] # Số lượng khung trong ma trận STFT
 
     # Khôi phục lại nửa phổ âm (đối xứng liên hợp phức - Hermitian symmetry) trước khi chạy IFFT
     # Bỏ qua bin 0 (DC) và bin cuối (Nyquist) khi lấy đối xứng
-    negative_freqs = np.conj(stft_matrix[:, -2:0:-1])
-    full_stft = np.concatenate([stft_matrix, negative_freqs], axis=-1)
+    negative_freqs = np.conj(stft_matrix[:, -2:0:-1]) #Lấy nửa phổ âm đối xứng
+    full_stft = np.concatenate([stft_matrix, negative_freqs], axis=-1) #Khôi phục lại phổ đầy đủ
 
     # Biến đổi ngược IFFT về các khung miền thời gian (lấy phần thực)
     time_frames = np.real(my_ifft(full_stft))
 
     # Chuẩn bị mảng đầu ra và mảng chuẩn hóa năng lượng cửa sổ
-    pad_len = n_fft // 2
-    total_len = (num_frames - 1) * hop_length + n_fft
-    reconstructed = np.zeros(total_len, dtype=np.float64)
-    window_sum = np.zeros(total_len, dtype=np.float64)
+    pad_len = n_fft // 2 #Tính độ dài đệm ban đầu
+    total_len = (num_frames - 1) * hop_length + n_fft #Tổng chiều dài tín hiệu sau khi cộng chồng lấp
+    reconstructed = np.zeros(total_len, dtype=np.float64) #Khởi tạo mảng tín hiệu tái tạo
+    window_sum = np.zeros(total_len, dtype=np.float64) #Khởi tạo mảng tổng bình phương cửa sổ   
 
-    window = my_hamming(n_fft)
+    window = my_hamming(n_fft) #Tạo cửa sổ Hamming để nhân với các khung
 
     # Cộng chồng lấp (Overlap-Add) có trọng số cửa sổ
     for m in range(num_frames):
@@ -348,3 +349,68 @@ if __name__ == "__main__":
         print("   Hãy bấm vào nghe thử sự khác biệt trước và sau khi lọc!")
     except FileNotFoundError:
         print("(Gợi ý: Nếu có file test_mic_16khz.wav trong thư mục, code sẽ tự xuất file nghe thử!)")
+
+if __name__ == "__main__":
+    import soundfile as sf
+    from scipy.io import savemat
+
+    sr = 16000
+    t = np.linspace(0, 2.0, 2 * sr, endpoint=False)
+    sig_f64 = 0.5 * np.sin(2 * np.pi * 440 * t) + 0.3 * np.sin(2 * np.pi * 1000 * t)
+    sig_f32 = sig_f64.astype(np.float32)
+
+    # 1. Máy tự động tính 5 hàng sai số E_max cho Bảng 3.4.2
+    n = np.arange(512, dtype=np.float64)
+    ref_hamming = 0.54 - 0.46 * np.cos(2 * np.pi * n / 511.0)
+    err_hamming = np.max(np.abs(my_hamming(512).astype(np.float64) - ref_hamming))
+
+    frame_f32 = sig_f32[:512]
+    err_fft_f32 = np.max(np.abs(my_fft(frame_f32) - np.fft.fft(frame_f32)))
+
+    frame_f64 = sig_f64[:512]
+    py_fft_f64 = my_fft(frame_f64)
+    err_fft_f64 = np.max(np.abs(py_fft_f64 - np.fft.fft(frame_f64)))
+
+    err_ifft_f64 = np.max(np.abs(my_ifft(py_fft_f64) - np.fft.ifft(py_fft_f64)))
+
+    stft_mat = my_stft(sig_f32, n_fft=512, hop_length=256)
+    rec_sig = my_istft(stft_mat, orig_len=len(sig_f32), n_fft=512, hop_length=256)
+    err_stft = np.max(np.abs(sig_f32 - rec_sig))
+
+    print("==========================================================")
+    print(" KẾT QUẢ SAI SỐ TỰ ĐỘNG")
+    print("==========================================================")
+    print(f"Hàng 1 - Cửa sổ Hamming (N=512) : E_max = {err_hamming:.2e}")
+    print(f"Hàng 2 - FFT Radix-2 (32-bit)   : E_max = {err_fft_f32:.2e}")
+    print(f"Hàng 3 - FFT Radix-2 (64-bit)   : E_max = {err_fft_f64:.2e}")
+    print(f"Hàng 4 - IFFT Radix-2 (64-bit)  : E_max = {err_ifft_f64:.2e}")
+    print(f"Hàng 5 - Chu trình STFT->ISTFT  : E_max = {err_stft:.2e}")
+
+    # 2. Máy tự động tính độ cải thiện SNR của bộ lọc Trừ phổ
+    t3 = np.linspace(0, 3.0, 3 * sr, endpoint=False)
+    clean_sig = np.zeros_like(t3, dtype=np.float32)
+    active_idx = int(0.4 * sr)
+    clean_sig[active_idx:] = (
+        0.5 * np.sin(2 * np.pi * 300 * t3[active_idx:]) + 
+        0.3 * np.sin(2 * np.pi * 800 * t3[active_idx:])
+    )
+    
+    np.random.seed(42)
+    noisy_sig = add_awgn_noise(clean_sig, snr_db=5.0)
+    denoised_sig = spectral_subtraction_filter(noisy_sig, sr=sr, alpha=2.5, beta=0.01)
+    snr_before = calculate_snr(clean_sig, noisy_sig)
+    snr_after = calculate_snr(clean_sig, denoised_sig)
+
+    print("----------------------------------------------------------")
+    print(f"SNR trước lọc: {snr_before:.2f} dB | SNR sau lọc: {snr_after:.2f} dB | Delta SNR: +{snr_after - snr_before:.2f} dB")
+
+    # 3. Xuất tệp compare_matlab.mat để MATLAB tự đọc và vẽ đồ thị
+    savemat("compare_matlab.mat", {
+        "frame_test": frame_f64,
+        "py_hamming": my_hamming(512),
+        "py_fft": my_fft(frame_f64 * my_hamming(512)),
+        "sr": sr
+    })
+    print("Đã tạo xong tệp compare_matlab.mat cho MATLAB!")
+
+
